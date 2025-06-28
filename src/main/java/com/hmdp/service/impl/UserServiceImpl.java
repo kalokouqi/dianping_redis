@@ -1,6 +1,7 @@
 package com.hmdp.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.bean.copier.CopyOptions;
 import cn.hutool.core.lang.UUID;
 import cn.hutool.core.util.RadixUtil;
 import cn.hutool.core.util.RandomUtil;
@@ -23,6 +24,7 @@ import org.springframework.stereotype.Service;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpSession;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -90,9 +92,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
         //7.1 随机生成1个token，作为登录令牌
         String token = UUID.randomUUID().toString(true);
-        // 7.2将User对象转为HashMap存储
+// 7.2将User对象转为HashMap存储
         UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
-        Map<String, Object> userMap = BeanUtil.beanToMap(userDTO);
+        Map<String, Object> userMap = BeanUtil.beanToMap(userDTO,new HashMap<>(), CopyOptions.create()
+                .setIgnoreNullValue(true)
+                .setFieldValueEditor((fieldName,fieldValue)->fieldValue.toString()));
 
         // 7.3存储
         String tokenKey =  LOGIN_USER_KEY + token;
