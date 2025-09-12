@@ -14,7 +14,7 @@ public class UserHolder {
         return tl.get();
     }
 
-    public static void removeUser(){
+    public static void removeUser() {
         tl.remove();
     }
 }
