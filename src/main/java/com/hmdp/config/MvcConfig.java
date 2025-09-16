@@ -25,6 +25,10 @@ public class MvcConfig implements WebMvcConfigurer {
                         "/blog/hot",
                         "/shop-type/**" ,
                         "/user/code" ,
+                        // 排除 /voucher 根路径
+                        "/voucher",
+                        "/voucher/list",
+                        // "/api/user/code",
                         "/user/login"
                 ).order(1);
         registry.addInterceptor(new RefreshTokenInterceptor(stringRedisTemplate)).addPathPatterns("/**").order(0);
