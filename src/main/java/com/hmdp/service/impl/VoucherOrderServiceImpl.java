@@ -30,7 +30,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Resource
     private RedisIdWorker redisIdWorker;
 
-    @Transactional
+    //@Transactional
     //加上事务之后遇到问题可以及时回滚
 
    @Override
@@ -46,15 +46,21 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
        //3.判断秒杀是否已经结束
        if (voucher.getEndTime().isBefore(LocalDateTime.now())) {
            return Result.fail("秒杀已经结束！");
-           }
-           //4.库存是否充足
-       if (voucher.getStock()<1) {
-           return Result.fail("库存不足！");
        }
+       //4.库存是否充足
+       if (voucher.getStock() < 1) {
+//           return Result.fail("库存不足！");
+//       }
 
+       }
+       return createVoucherOrder(voucherId);
+   }
+    //做一人一单的判断
+    //根据优惠卷id和用户id查询订单
 
-       //TODO 做一人一单的判断
-        //根据优惠卷id和用户id查询订单
+        @Transactional
+        public synchronized Result createVoucherOrder(Long voucherId) {
+            // 5. 一人一单
         Long userId = UserHolder.getUser().getId();
        //5.1查询订单
         int count = query().eq("userId", userId).eq("voucherId", voucherId).count();
@@ -74,7 +80,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             //库存不足
             return Result.fail("库存不足！");
         }
-                 //6/创建订单
+        //6/创建订单
         VoucherOrder voucherOrder = new VoucherOrder();
 
        //7.1订单id
