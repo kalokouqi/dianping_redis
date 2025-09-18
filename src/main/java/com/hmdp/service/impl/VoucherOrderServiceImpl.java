@@ -8,7 +8,11 @@ import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisIdWorker;
+import com.hmdp.utils.SimpleRedisLock;
 import com.hmdp.utils.UserHolder;
+import org.springframework.aop.framework.AopContext;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,39 +33,74 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     private ISeckillVoucherService seckillVoucherService;
     @Resource
     private RedisIdWorker redisIdWorker;
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
 
     //@Transactional
     //加上事务之后遇到问题可以及时回滚
 
-   @Override
+    @Override
     public Result seckillVoucher(Long voucherId) {
-       //1.查询优惠卷
-       SeckillVoucher voucher = seckillVoucherService.getById(voucherId);
-       //2.判断秒杀是否开始
-       //判断开始时间在我们的当前时间之后，如果在这之后，则没开始
-       if (voucher.getBeginTime().isAfter(LocalDateTime.now())) {
-           //尚未开始
-           return Result.fail("秒杀尚未开始！");
-       }
-       //3.判断秒杀是否已经结束
-       if (voucher.getEndTime().isBefore(LocalDateTime.now())) {
-           return Result.fail("秒杀已经结束！");
-       }
-       //4.库存是否充足
-       if (voucher.getStock() < 1) {
-//           return Result.fail("库存不足！");
-//       }
+        //1.查询优惠卷
+        SeckillVoucher voucher = seckillVoucherService.getById(voucherId);
+        //2.判断秒杀是否开始
+        //判断开始时间在我们的当前时间之后，如果在这之后，则没开始
+        if (voucher.getBeginTime().isAfter(LocalDateTime.now())) {
+            //尚未开始
+            return Result.fail("秒杀尚未开始！");
+        }
+        //3.判断秒杀是否已经结束
+        if (voucher.getEndTime().isBefore(LocalDateTime.now())) {
+            return Result.fail("秒杀已经结束！");
+        }
+        //4.库存是否充足
+        if (voucher.getStock() < 1) {
+            return Result.fail("库存不足！");
+        }
 
-       }
-       return createVoucherOrder(voucherId);
-   }
+        Long userId = UserHolder.getUser().getId();
+        //synchronized (userId.toString().intern())
+        //创建锁对象
+        SimpleRedisLock lock = new SimpleRedisLock("order" + userId, stringRedisTemplate);
+
+        // 然后再获取锁
+        boolean isLock = lock.tryLock(200);
+        //判断是否获取锁成功
+        if (!isLock) {
+            //获取锁失败，返回错误或者重试
+            return Result.fail("不允许重复下单");
+        }
+
+        //这种调用方式实上是用this调用的
+         //相当于    return this.createVoucherOrder(voucherId);
+            //而不是他的代理对象
+            //而@Translational注解是spring对当前的类（VoucherOrderServiceImpl)做了动态代理
+            // ，拿到了VoucherOrderServiceImpl的代理对象，用这个代理对象做的事务处理
+            //而此时的return this.createVoucherOrder(voucherId);这个this指的是代理非对象（目标对象）没有事务功能
+            //这个是spring事务失效的情况之一
+
+            //所以我们需要拿到这个事务的代理对象才行
+            //得到的是IVoucherOrderService的代理对象(事务）
+        try {
+            //获取代理对象（事务）
+            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
+            return  proxy.createVoucherOrder(voucherId);
+            // createVoucherOrder变成了一个带有事务的对象
+        } finally {
+            //释放锁
+            lock.unlock();
+
+        }
+
+    }
     //做一人一单的判断
     //根据优惠卷id和用户id查询订单
 
         @Transactional
-        public synchronized Result createVoucherOrder(Long voucherId) {
+        public Result createVoucherOrder(Long voucherId) {
             // 5. 一人一单
-        Long userId = UserHolder.getUser().getId();
+            Long userId = UserHolder.getUser().getId();
+
        //5.1查询订单
         int count = query().eq("userId", userId).eq("voucherId", voucherId).count();
         //5.2判断订单是否存在
@@ -97,5 +136,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
            return Result.ok(orderId);
        }
    }
+
 
 
